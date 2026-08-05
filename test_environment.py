@@ -80,8 +80,12 @@ class TestEnvironment(unittest.TestCase):
             )
         except Exception as error:
             response = None
-            msg = (f"OpenAI connection failed ({type(error).__name__}). Check the "
-                   "OPENAI_API_KEY and OPENAI_BASE_URL values in .env file.")
+            # The proxy explains itself - an idle session, for example, needs
+            # reactivating rather than a new key. Show its message, not ours.
+            detail = getattr(getattr(error, "body", None), "get", lambda _k: None)("message")
+            msg = detail or (
+                f"OpenAI connection failed ({type(error).__name__}). Check the "
+                "OPENAI_API_KEY and OPENAI_BASE_URL values in .env file.")
         self.assertIsNotNone(response, msg)
 
     def test_neo4j_connection(self):

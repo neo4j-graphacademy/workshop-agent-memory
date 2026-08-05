@@ -111,7 +111,13 @@ memory_settings = MemorySettings(
         password=os.environ["NEO4J_PASSWORD"],
     ),
     embedding=EmbeddingConfig(api_key=os.environ["OPENAI_API_KEY"]),
-    extraction=ExtractionConfig(extractor_type=ExtractorType.LLM),
+    extraction=ExtractionConfig(
+        extractor_type=ExtractorType.LLM,
+        entity_types=[
+            "PERSON", "ORGANIZATION", "LOCATION", "EVENT", "OBJECT",
+            "ACTIVITY",
+        ],
+    ),
 )
 
 

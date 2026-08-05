@@ -1,6 +1,3 @@
-langchain
-langchain-core
-langchain-openai
 neo4j
 neo4j-graphrag
 python-dotenv
