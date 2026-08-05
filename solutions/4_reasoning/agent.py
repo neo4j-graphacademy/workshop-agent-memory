@@ -25,6 +25,8 @@ load_dotenv()
 
 # Silence the driver's deprecation notices for the vector-index queries.
 logging.getLogger("neo4j.notifications").setLevel(logging.ERROR)
+# Transient write conflicts retry automatically - don't print the retry.
+logging.getLogger("neo4j.session").setLevel(logging.ERROR)
 
 MODEL = "openai-chat:gpt-5.2"
 DATABASE = os.getenv("NEO4J_DATABASE", "neo4j")

@@ -13,6 +13,8 @@ from neo4j import GraphDatabase
 load_dotenv()
 
 logging.getLogger("neo4j.notifications").setLevel(logging.ERROR)
+# Transient write conflicts retry automatically - don't print the retry.
+logging.getLogger("neo4j.session").setLevel(logging.ERROR)
 
 if not os.getenv("MVP_NEO4J_URI"):
     raise SystemExit("MVP_NEO4J_URI is not set - add the shared instance values to your .env first.")
