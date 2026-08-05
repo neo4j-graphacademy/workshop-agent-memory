@@ -30,6 +30,9 @@ class TestEnvironment(unittest.TestCase):
             self.skipTest("Skipping OpenAI env variable test")
 
         self.env_variable_exists('OPENAI_API_KEY')
+        self.assertIsNotNone(
+            os.getenv('OPENAI_BASE_URL'),
+            "OPENAI_BASE_URL not found in .env file - without it your workshop key is sent to OpenAI and rejected.")
         TestEnvironment.skip_openai_test = False
 
     def test_neo4j_variables(self):
@@ -62,17 +65,24 @@ class TestEnvironment(unittest.TestCase):
         if TestEnvironment.skip_openai_test:
             self.skipTest("Skipping OpenAI test")
 
-        from openai import OpenAI, AuthenticationError
+        from openai import OpenAI
 
+        msg = ""
         llm = OpenAI()
 
+        # The workshop proxy serves chat completions and embeddings, but not
+        # /models - so check the connection with the model the agent uses.
         try:
-            models = llm.models.list()
-        except AuthenticationError:
-            models = None
-        self.assertIsNotNone(
-            models,
-            "OpenAI connection failed. Check the OPENAI_API_KEY key in .env file.")
+            response = llm.chat.completions.create(
+                model="gpt-5.2",
+                messages=[{"role": "user", "content": "ping"}],
+                max_completion_tokens=16,
+            )
+        except Exception as error:
+            response = None
+            msg = (f"OpenAI connection failed ({type(error).__name__}). Check the "
+                   "OPENAI_API_KEY and OPENAI_BASE_URL values in .env file.")
+        self.assertIsNotNone(response, msg)
 
     def test_neo4j_connection(self):
 
