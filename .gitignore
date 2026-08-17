@@ -12,3 +12,6 @@ __pycache__/
 # Local backups
 *.bak
 .env.*
+
+# Local scratch scripts - seeding and demo prep, not part of the workshop
+add_temp_*.py
