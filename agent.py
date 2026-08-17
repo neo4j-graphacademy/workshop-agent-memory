@@ -16,10 +16,10 @@ from neo4j_graphrag.embeddings.openai import OpenAIEmbeddings
 from neo4j_graphrag.llm import OpenAILLM
 from neo4j_graphrag.retrievers import Text2CypherRetriever, VectorCypherRetriever
 
+load_dotenv()
+
 # --- Memory client (module 2, lesson 1): import MemoryClient, MemorySettings,
 #     and the config objects here.
-
-load_dotenv()
 
 # Silence the driver's deprecation notices for the vector-index queries.
 logging.getLogger("neo4j.notifications").setLevel(logging.ERROR)

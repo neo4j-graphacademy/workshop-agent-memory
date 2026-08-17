@@ -111,6 +111,7 @@ memory_settings = MemorySettings(
         uri=os.environ["NEO4J_URI"],
         username=os.environ["NEO4J_USERNAME"],
         password=os.environ["NEO4J_PASSWORD"],
+        database=os.getenv("NEO4J_DATABASE", "neo4j"),
     ),
     embedding=EmbeddingConfig(api_key=os.environ["OPENAI_API_KEY"]),
     extraction=ExtractionConfig(extractor_type=ExtractorType.LLM),
