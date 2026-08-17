@@ -1,11 +1,13 @@
 # The finished memory agent: agent_no_memory.py plus neo4j-agent-memory.
-# Its memory lives in the shared workshop instance (MVP_NEO4J_*), and its
-# session and user ids come from the environment.
+# Its memory lives in the shared workshop instance (MVP_NEO4J_*). The user id
+# comes from the environment and identifies you across every run; the session
+# id is new each run, so the conversation restarts while the identity does not.
 
 import asyncio
 import logging
 import os
 from dataclasses import dataclass
+from datetime import date
 
 from dotenv import load_dotenv
 from neo4j import GraphDatabase
@@ -38,8 +40,14 @@ logging.getLogger("neo4j.session").setLevel(logging.ERROR)
 
 MODEL = "openai-chat:gpt-5.2"
 DATABASE = os.getenv("NEO4J_DATABASE", "neo4j")
-SESSION_ID = os.getenv("MVP_SESSION_ID", "learner")
-USER_ID = os.getenv("MVP_USER_ID", SESSION_ID)
+# Who you are in the shared instance - stable across runs, so your entities,
+# facts, preferences and traces all accumulate against one :User. MVP_SESSION_ID
+# is still read, as the name module 1 gives it.
+USER_ID = os.getenv("MVP_USER_ID") or os.getenv("MVP_SESSION_ID", "learner")
+# The session is not the user: one conversation per day, the package's own
+# per_day shape. Restarting today rejoins today's conversation; tomorrow opens
+# a new one, still under the same user.
+SESSION_ID = f"{USER_ID}-{date.today().isoformat()}"
 
 # --- The agent's knowledge-graph tools (the genai workshop's, each
 #     reporting into the trace) ---------------------------------------------
@@ -232,18 +240,20 @@ async def find_similar_attendees(ctx: RunContext[AgentDeps], interests: str) -> 
     """Find other workshop attendees for the learner to connect with, by
     shared interests."""
     await report_step(ctx, "find_similar_attendees", interests=interests)
-    # Over-fetch, then keep only messages from other sessions - otherwise the
-    # learner's own words outrank everyone else's.
+    # Over-fetch, then keep only messages from other people - otherwise the
+    # learner's own words outrank everyone else's. Excluded by :User, not by
+    # session: every run opens a new session, so your own earlier sessions
+    # would otherwise come back as other attendees.
     hits = await ctx.deps.memory_client.short_term.search_messages(interests, limit=25)
     if not hits:
         return "No attendees found yet."
     rows = await ctx.deps.memory_client.query.cypher(
         """
-        MATCH (c:Conversation)-[:HAS_MESSAGE]->(m:Message)
-        WHERE m.id IN $ids AND c.session_id <> $session_id
+        MATCH (u:User)-[:HAS_CONVERSATION]->(:Conversation)-[:HAS_MESSAGE]->(m:Message)
+        WHERE m.id IN $ids AND u.identifier <> $user_id
         RETURN m.id AS id
         """,
-        {"ids": [str(m.id) for m in hits], "session_id": ctx.deps.session_id},
+        {"ids": [str(m.id) for m in hits], "user_id": ctx.deps.user_id},
     )
     other_ids = {row["id"] for row in rows}
     others = [m for m in hits if str(m.id) in other_ids][:5]
