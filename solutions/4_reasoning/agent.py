@@ -4,7 +4,6 @@ import asyncio
 import logging
 import os
 from dataclasses import dataclass
-from datetime import date
 
 from dotenv import load_dotenv
 from neo4j import GraphDatabase
@@ -31,8 +30,8 @@ logging.getLogger("neo4j.session").setLevel(logging.ERROR)
 
 MODEL = "openai-chat:gpt-5.2"
 DATABASE = os.getenv("NEO4J_DATABASE", "neo4j")
+SESSION_ID = "learner"
 USER_ID = "learner"
-SESSION_ID = f"{USER_ID}-{date.today().isoformat()}"
 
 # --- The agent's knowledge-graph tools (the genai workshop's, each
 #     reporting into the trace) ---------------------------------------------

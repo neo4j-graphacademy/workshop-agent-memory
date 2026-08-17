@@ -6,7 +6,6 @@ import asyncio
 import logging
 import os
 from dataclasses import dataclass
-from datetime import date
 
 from dotenv import load_dotenv
 from neo4j import GraphDatabase
@@ -33,8 +32,8 @@ logging.getLogger("neo4j.session").setLevel(logging.ERROR)
 
 MODEL = "openai-chat:gpt-5.2"
 DATABASE = os.getenv("NEO4J_DATABASE", "neo4j")
+SESSION_ID = "learner"
 USER_ID = "learner"
-SESSION_ID = f"{USER_ID}-{date.today().isoformat()}"
 
 # --- The agent's knowledge-graph tools (the genai workshop's, each
 #     reporting into the trace) ---------------------------------------------
@@ -227,19 +226,18 @@ async def find_similar_attendees(ctx: RunContext[AgentDeps], interests: str) -> 
     """Find other workshop attendees for the learner to connect with, by
     shared interests."""
     await report_step(ctx, "find_similar_attendees", interests=interests)
-    # Over-fetch, then keep only messages from other people - otherwise the
-    # learner's own words outrank everyone else's. Excluded by :User, not by
-    # session, so your own earlier sessions never come back as other attendees.
+    # Over-fetch, then keep only messages from other sessions - otherwise the
+    # learner's own words outrank everyone else's.
     hits = await ctx.deps.memory_client.short_term.search_messages(interests, limit=25)
     if not hits:
         return "No attendees found yet."
     rows = await ctx.deps.memory_client.query.cypher(
         """
-        MATCH (u:User)-[:HAS_CONVERSATION]->(:Conversation)-[:HAS_MESSAGE]->(m:Message)
-        WHERE m.id IN $ids AND u.identifier <> $user_id
+        MATCH (c:Conversation)-[:HAS_MESSAGE]->(m:Message)
+        WHERE m.id IN $ids AND c.session_id <> $session_id
         RETURN m.id AS id
         """,
-        {"ids": [str(m.id) for m in hits], "user_id": ctx.deps.user_id},
+        {"ids": [str(m.id) for m in hits], "session_id": ctx.deps.session_id},
     )
     other_ids = {row["id"] for row in rows}
     others = [m for m in hits if str(m.id) in other_ids][:5]

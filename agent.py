@@ -29,11 +29,8 @@ logging.getLogger("neo4j.session").setLevel(logging.ERROR)
 MODEL = "openai-chat:gpt-5.2"
 DATABASE = os.getenv("NEO4J_DATABASE", "neo4j")
 
-# --- Short-term memory (module 2, lesson 2): name the user and the session
-#     here. The user id is fixed; the session id carries the date, so each
-#     day is its own conversation under the same user. For example
-#       USER_ID = "learner"
-#       SESSION_ID = f"{USER_ID}-{date.today().isoformat()}"
+# --- Short-term memory (module 2, lesson 2): name the session and the user
+#     here, for example  SESSION_ID = "learner"
 
 # --- The agent's knowledge-graph tools (identical to agent_no_memory.py) ------
 
