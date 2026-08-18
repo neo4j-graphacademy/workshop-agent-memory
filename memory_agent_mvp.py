@@ -233,8 +233,11 @@ async def find_similar_attendees(ctx: RunContext[AgentDeps], interests: str) -> 
     shared interests."""
     await report_step(ctx, "find_similar_attendees", interests=interests)
     # Over-fetch, then keep only messages from other sessions - otherwise the
-    # learner's own words outrank everyone else's.
-    hits = await ctx.deps.memory_client.short_term.search_messages(interests, limit=25)
+    # learner's own words outrank everyone else's. The 0.7 default is too tight
+    # for short interest phrases against full introductions; 0.6 matches.
+    hits = await ctx.deps.memory_client.short_term.search_messages(
+        interests, limit=25, threshold=0.6,
+    )
     if not hits:
         return "No attendees found yet."
     rows = await ctx.deps.memory_client.query.cypher(
