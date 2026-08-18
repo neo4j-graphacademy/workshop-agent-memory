@@ -244,6 +244,7 @@ async def find_similar_attendees(ctx: RunContext[AgentDeps], interests: str) -> 
         """
         MATCH (c:Conversation)-[:HAS_MESSAGE]->(m:Message)
         WHERE m.id IN $ids AND c.session_id <> $session_id
+          AND m.role = "user"
         RETURN m.id AS id
         """,
         {"ids": [str(m.id) for m in hits], "session_id": ctx.deps.session_id},
