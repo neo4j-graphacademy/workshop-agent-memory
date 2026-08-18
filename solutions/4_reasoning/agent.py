@@ -1,4 +1,8 @@
-# Solution - module 4: a reasoning trace around every turn.
+# agent.py - the agent you build up through the workshop.
+#
+# It starts as a copy of agent_no_memory.py: the three-tool GraphRAG agent, no
+# memory. Follow the lessons and fill in the marked sections, one memory layer
+# at a time, until this file matches memory_agent_mvp.py.
 
 import asyncio
 import logging
@@ -15,10 +19,7 @@ from neo4j_graphrag.retrievers import Text2CypherRetriever, VectorCypherRetrieve
 
 from neo4j_agent_memory import MemoryClient, MemorySettings
 from neo4j_agent_memory.config import (
-    Neo4jConfig,
-    EmbeddingConfig,
-    ExtractionConfig,
-    ExtractorType,
+    Neo4jConfig, EmbeddingConfig, ExtractionConfig, ExtractorType,
 )
 
 load_dotenv()
@@ -33,8 +34,31 @@ DATABASE = os.getenv("NEO4J_DATABASE", "neo4j")
 SESSION_ID = "learner"
 USER_ID = "learner"
 
-# --- The agent's knowledge-graph tools (the genai workshop's, each
-#     reporting into the trace) ---------------------------------------------
+
+# The agent's dependencies: everything a tool or prompt needs at run time.
+@dataclass
+class AgentDeps:
+    memory_client: MemoryClient
+    user_id: str
+    session_id: str
+    current_query: str | None = None
+    current_trace_id: str | None = None
+
+
+async def report_step(ctx: RunContext[AgentDeps], tool_name: str, **arguments) -> None:
+    """Report a tool's work into the turn's open trace."""
+    if ctx.deps.current_trace_id is None:
+        return
+    step = await ctx.deps.memory_client.reasoning.add_step(
+        trace_id=ctx.deps.current_trace_id,
+        thought=f"Calling {tool_name}", action=tool_name,
+    )
+    await ctx.deps.memory_client.reasoning.record_tool_call(
+        step_id=step.id, tool_name=tool_name, arguments=arguments,
+    )
+
+
+# --- The agent's knowledge-graph tools, each reporting into the trace --------
 
 driver = GraphDatabase.driver(
     os.environ["NEO4J_URI"],
@@ -50,6 +74,8 @@ def run_query(cypher, **params):
     return [r.data() for r in records]
 
 
+# GraphRAG retrieval (the genai workshop's canonical query): vector-match a
+# passage, return its lesson, and traverse to the entities connected to it.
 GRAPHRAG_RETRIEVAL = """
 MATCH (node)-[:FROM_DOCUMENT]->(d)-[:PDF_OF]->(lesson)
 RETURN
@@ -77,6 +103,7 @@ vector_retriever = VectorCypherRetriever(
     neo4j_database=DATABASE,
 )
 
+# Natural language -> Cypher, with an example to steer query generation.
 examples = [
     "USER INPUT: 'Find a node with the name $name?' QUERY: MATCH (node) WHERE toLower(node.name) CONTAINS toLower($name) RETURN node.name AS name, labels(node) AS labels",
 ]
@@ -119,25 +146,8 @@ memory_settings = MemorySettings(
         database=os.getenv("NEO4J_DATABASE", "neo4j"),
     ),
     embedding=EmbeddingConfig(api_key=os.environ["OPENAI_API_KEY"]),
-    extraction=ExtractionConfig(
-        extractor_type=ExtractorType.LLM,
-        entity_types=[
-            "PERSON", "ORGANIZATION", "LOCATION", "EVENT", "OBJECT",
-            "ACTIVITY",
-        ],
-    ),
+    extraction=ExtractionConfig(extractor_type=ExtractorType.LLM),
 )
-
-
-# The agent's dependencies: everything a tool or prompt needs at run time.
-@dataclass
-class AgentDeps:
-    memory_client: MemoryClient
-    user_id: str
-    session_id: str
-    current_query: str | None = None
-    current_trace_id: str | None = None
-
 
 SYSTEM_PROMPT = (
     "You are an assistant for a Neo4j knowledge graph of course material. "
@@ -164,19 +174,6 @@ async def what_you_remember(ctx: RunContext[AgentDeps]) -> str:
         ctx.deps.current_query, session_id=ctx.deps.session_id,
     )
     return f"What you remember:\n{context}"
-
-
-async def report_step(ctx: RunContext[AgentDeps], tool_name: str, **arguments) -> None:
-    """Report a tool's work into the turn's open trace."""
-    if ctx.deps.current_trace_id is None:
-        return
-    step = await ctx.deps.memory_client.reasoning.add_step(
-        trace_id=ctx.deps.current_trace_id,
-        thought=f"Calling {tool_name}", action=tool_name,
-    )
-    await ctx.deps.memory_client.reasoning.record_tool_call(
-        step_id=step.id, tool_name=tool_name, arguments=arguments,
-    )
 
 
 @agent.tool
@@ -228,6 +225,8 @@ async def save_fact(ctx: RunContext[AgentDeps], subject: str, predicate: str, ob
     return f"Recorded: {subject} {predicate} {obj}."
 
 
+# --- Reasoning (module 4, lesson 2): define how_did_i_handle here, below
+#     save_fact.
 @agent.tool
 async def how_did_i_handle(ctx: RunContext[AgentDeps], task: str) -> str:
     """Read back how similar past tasks were handled."""
@@ -235,12 +234,13 @@ async def how_did_i_handle(ctx: RunContext[AgentDeps], task: str) -> str:
     traces = await ctx.deps.memory_client.reasoning.get_similar_traces(task=task, limit=3)
     return "\n".join(f"{t.task} -> {t.outcome} (success: {t.success})" for t in traces) or "No similar past tasks yet."
 
+# --- Your own tool (module 5): define your custom @agent.tool here.
+
 
 async def main():
     async with MemoryClient(memory_settings) as memory:
         print("Agent ready - now with memory. Ask about the course, or tell me about yourself.")
         print("Type 'exit' (or Ctrl-D) to quit.\n")
-
         try:
             while True:
                 try:
@@ -284,8 +284,7 @@ async def main():
                     print("\nagent> Something went wrong - that attempt is on the record.\n")
         finally:
             driver.close()
-
-        print("\nGoodbye. Everything you told me is saved - run me again and I will remember.")
+        print("\nGoodbye.")
 
 
 if __name__ == "__main__":

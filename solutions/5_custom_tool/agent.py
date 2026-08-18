@@ -35,6 +35,29 @@ DATABASE = os.getenv("NEO4J_DATABASE", "neo4j")
 SESSION_ID = "learner"
 USER_ID = "learner"
 
+# The agent's dependencies: everything a tool or prompt needs at run time.
+@dataclass
+class AgentDeps:
+    memory_client: MemoryClient
+    user_id: str
+    session_id: str
+    current_query: str | None = None
+    current_trace_id: str | None = None
+
+
+async def report_step(ctx: RunContext[AgentDeps], tool_name: str, **arguments) -> None:
+    """Report a tool's work into the turn's open trace."""
+    if ctx.deps.current_trace_id is None:
+        return
+    step = await ctx.deps.memory_client.reasoning.add_step(
+        trace_id=ctx.deps.current_trace_id,
+        thought=f"Calling {tool_name}", action=tool_name,
+    )
+    await ctx.deps.memory_client.reasoning.record_tool_call(
+        step_id=step.id, tool_name=tool_name, arguments=arguments,
+    )
+
+
 # --- The agent's knowledge-graph tools (the genai workshop's, each
 #     reporting into the trace) ---------------------------------------------
 
@@ -131,16 +154,6 @@ memory_settings = MemorySettings(
 )
 
 
-# The agent's dependencies: everything a tool or prompt needs at run time.
-@dataclass
-class AgentDeps:
-    memory_client: MemoryClient
-    user_id: str
-    session_id: str
-    current_query: str | None = None
-    current_trace_id: str | None = None
-
-
 SYSTEM_PROMPT = (
     "You are an assistant for a Neo4j knowledge graph of course material. "
     "Answer questions about the material with get_schema, search_lesson_content, and query_database, and draw on what you remember to help. "
@@ -169,19 +182,6 @@ async def what_you_remember(ctx: RunContext[AgentDeps]) -> str:
         ctx.deps.current_query, session_id=ctx.deps.session_id,
     )
     return f"What you remember:\n{context}"
-
-
-async def report_step(ctx: RunContext[AgentDeps], tool_name: str, **arguments) -> None:
-    """Report a tool's work into the turn's open trace."""
-    if ctx.deps.current_trace_id is None:
-        return
-    step = await ctx.deps.memory_client.reasoning.add_step(
-        trace_id=ctx.deps.current_trace_id,
-        thought=f"Calling {tool_name}", action=tool_name,
-    )
-    await ctx.deps.memory_client.reasoning.record_tool_call(
-        step_id=step.id, tool_name=tool_name, arguments=arguments,
-    )
 
 
 @agent.tool

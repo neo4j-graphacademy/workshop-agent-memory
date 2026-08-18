@@ -32,6 +32,12 @@ DATABASE = os.getenv("NEO4J_DATABASE", "neo4j")
 # --- Short-term memory (module 2, lesson 2): name the session and the user
 #     here, for example  SESSION_ID = "learner"
 
+# --- Short-term memory (module 2, lesson 2): define AgentDeps here,
+#     above the knowledge-graph tools.
+
+# --- Reasoning (module 4, lesson 1): define report_step here, above the
+#     tools that call it.
+
 # --- The agent's knowledge-graph tools (identical to agent_no_memory.py) ------
 
 driver = GraphDatabase.driver(
@@ -110,9 +116,6 @@ def query_database(query: str) -> list:
 # --- Memory client (module 2, lesson 1): build memory_settings here.
 #     memory_settings = MemorySettings(neo4j=..., embedding=..., extraction=...)
 
-# --- Short-term memory (module 2, lesson 2): define AgentDeps here,
-#     above SYSTEM_PROMPT.
-
 SYSTEM_PROMPT = (
     "You are an assistant for a Neo4j knowledge graph of course material. "
     "Answer questions about the material with get_schema, search_lesson_content, and query_database, and draw on what you remember to help."
@@ -127,9 +130,6 @@ agent = Agent(
 # --- Short-term memory (module 2, lesson 2): add your dynamic system prompt
 #     here, below the agent, with @agent.system_prompt reading get_context on
 #     every turn.
-
-# --- Reasoning (module 4, lesson 1): define report_step here, so every
-#     tool can report its work into the turn's open trace.
 
 # --- Long-term memory (module 3, lesson 1): define your agent's four memory
 #     tools here - search_messages, search_entities, save_preference,
@@ -160,10 +160,13 @@ async def main():
                 break
 
             # --- Short-term memory (module 2, lesson 2): store the user's
-            #     message here, then build the turn's deps.
+            #     message here.
 
-            # --- Reasoning (module 4, lesson 1): open the trace between the
-            #     stored message and the deps build - either ending closes it.
+            # --- Reasoning (module 4, lesson 1): open the trace here, before
+            #     the deps build - either ending closes it.
+
+            # --- Short-term memory (module 2, lesson 2): build the turn's
+            #     deps here.
 
             result = await agent.run(user_input, message_history=history)
             print(f"\nagent> {result.output}\n")

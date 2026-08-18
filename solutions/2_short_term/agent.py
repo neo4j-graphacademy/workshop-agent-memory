@@ -1,4 +1,8 @@
-# Solution - module 2: short-term memory added.
+# agent.py - the agent you build up through the workshop.
+#
+# It starts as a copy of agent_no_memory.py: the three-tool GraphRAG agent, no
+# memory. Follow the lessons and fill in the marked sections, one memory layer
+# at a time, until this file matches memory_agent_mvp.py.
 
 import asyncio
 import logging
@@ -15,12 +19,13 @@ from neo4j_graphrag.retrievers import Text2CypherRetriever, VectorCypherRetrieve
 
 from neo4j_agent_memory import MemoryClient, MemorySettings
 from neo4j_agent_memory.config import (
-    Neo4jConfig,
-    EmbeddingConfig,
-    ExtractionConfig,
-    ExtractorType,
+    Neo4jConfig, EmbeddingConfig, ExtractionConfig, ExtractorType,
 )
+
 load_dotenv()
+
+# --- Memory client (module 2, lesson 1): import MemoryClient, MemorySettings,
+#     and the config objects here.
 
 # Silence the driver's deprecation notices for the vector-index queries.
 logging.getLogger("neo4j.notifications").setLevel(logging.ERROR)
@@ -29,8 +34,24 @@ logging.getLogger("neo4j.session").setLevel(logging.ERROR)
 
 MODEL = "openai-chat:gpt-5.2"
 DATABASE = os.getenv("NEO4J_DATABASE", "neo4j")
+
+# --- Short-term memory (module 2, lesson 2): name the session and the user
+#     here, for example  SESSION_ID = "learner"
 SESSION_ID = "learner"
 USER_ID = "learner"
+
+# --- Short-term memory (module 2, lesson 2): define AgentDeps here,
+#     above the knowledge-graph tools.
+
+@dataclass
+class AgentDeps:  # (1)
+    memory_client: MemoryClient
+    user_id: str
+    session_id: str
+    current_query: str | None = None
+
+# --- Reasoning (module 4, lesson 1): define report_step here, above the
+#     tools that call it.
 
 # --- The agent's knowledge-graph tools (identical to agent_no_memory.py) ------
 
@@ -48,6 +69,8 @@ def run_query(cypher, **params):
     return [r.data() for r in records]
 
 
+# GraphRAG retrieval (the genai workshop's canonical query): vector-match a
+# passage, return its lesson, and traverse to the entities connected to it.
 GRAPHRAG_RETRIEVAL = """
 MATCH (node)-[:FROM_DOCUMENT]->(d)-[:PDF_OF]->(lesson)
 RETURN
@@ -75,6 +98,7 @@ vector_retriever = VectorCypherRetriever(
     neo4j_database=DATABASE,
 )
 
+# Natural language -> Cypher, with an example to steer query generation.
 examples = [
     "USER INPUT: 'Find a node with the name $name?' QUERY: MATCH (node) WHERE toLower(node.name) CONTAINS toLower($name) RETURN node.name AS name, labels(node) AS labels",
 ]
@@ -104,35 +128,24 @@ def query_database(query: str) -> list:
     return [item.content for item in result.items]
 
 
-# --- Memory ------------------------------------------------------------------
-
+# --- Memory client (module 2, lesson 1): build memory_settings here.
+#     memory_settings = MemorySettings(neo4j=..., embedding=..., extraction=...)
 memory_settings = MemorySettings(
-    neo4j=Neo4jConfig(
+    neo4j=Neo4jConfig(  # (1)
         uri=os.environ["NEO4J_URI"],
         username=os.environ["NEO4J_USERNAME"],
         password=os.environ["NEO4J_PASSWORD"],
         database=os.getenv("NEO4J_DATABASE", "neo4j"),
     ),
-    embedding=EmbeddingConfig(api_key=os.environ["OPENAI_API_KEY"]),
-    extraction=ExtractionConfig(extractor_type=ExtractorType.LLM),
+    embedding=EmbeddingConfig(api_key=os.environ["OPENAI_API_KEY"]),  # (2)
+    extraction=ExtractionConfig(extractor_type=ExtractorType.LLM),  # (3)
 )
-
-
-# The agent's dependencies: everything a tool or prompt needs at run time.
-@dataclass
-class AgentDeps:
-    memory_client: MemoryClient
-    user_id: str
-    session_id: str
-    current_query: str | None = None
-
 
 SYSTEM_PROMPT = (
     "You are an assistant for a Neo4j knowledge graph of course material. "
     "Answer questions about the material with get_schema, search_lesson_content, and query_database, and draw on what you remember to help."
 )
 
-# Built once. The static prompt sets policy; memory arrives through deps.
 agent = Agent(
     MODEL,
     deps_type=AgentDeps,
@@ -140,25 +153,37 @@ agent = Agent(
     system_prompt=SYSTEM_PROMPT,
 )
 
-
-@agent.system_prompt
+# --- Short-term memory (module 2, lesson 2): add your dynamic system prompt
+#     here, below the agent, with @agent.system_prompt reading get_context on
+#     every turn.
+@agent.system_prompt  # (1)
 async def what_you_remember(ctx: RunContext[AgentDeps]) -> str:
-    """Read what the agent remembers about this learner into every turn."""
-    if ctx.deps.current_query is None:
+    if ctx.deps.current_query is None:  # (2)
         return ""
-    context = await ctx.deps.memory_client.get_context(
+    context = await ctx.deps.memory_client.get_context(  # (3)
         ctx.deps.current_query, session_id=ctx.deps.session_id,
     )
     return f"What you remember:\n{context}"
 
+# --- Long-term memory (module 3, lesson 1): define your agent's four memory
+#     tools here - search_messages, search_entities, save_preference,
+#     and recall_preferences.
 
+# --- Long-term memory (module 3, lesson 5): define your save_fact
+#     @agent.tool here.
+
+# --- Reasoning (module 4, lesson 2): define how_did_i_handle here, below
+#     save_fact.
+
+# --- Your own tool (module 5): define your custom @agent.tool here.
 
 
 async def main():
+    # --- Memory client (module 2, lesson 1): open the MemoryClient around
+    #     the body of main().
     async with MemoryClient(memory_settings) as memory:
-        print("Agent ready - now with memory. Ask about the course, or tell me about yourself.")
+        print("Agent ready. No memory yet - ask about the course material.")
         print("Type 'exit' (or Ctrl-D) to quit.\n")
-
         try:
             while True:
                 try:
@@ -168,31 +193,35 @@ async def main():
                 if not user_input or user_input.lower() in {"exit", "quit"}:
                     break
 
-                # Store the learner's message first, so even a failed turn
-                # leaves a complete record.
-                await memory.short_term.add_message(
-                    SESSION_ID, "user", user_input, user_identifier=USER_ID,
+                # --- Short-term memory (module 2, lesson 2): store the user's
+                #     message here.
+                await memory.short_term.add_message(  # (1)
+                SESSION_ID, "user", user_input, user_identifier=USER_ID,
                 )
 
-                # Fresh dependencies each turn, carrying the current query
-                # for the dynamic system prompt.
-                deps = AgentDeps(
+                # --- Reasoning (module 4, lesson 1): open the trace here, before
+                #     the deps build - either ending closes it.
+
+                # --- Short-term memory (module 2, lesson 2): build the turn's
+                #     deps here.
+                deps = AgentDeps(  # (2)
                     memory_client=memory,
                     user_id=USER_ID,
                     session_id=SESSION_ID,
                     current_query=user_input,
                 )
 
-                result = await agent.run(user_input, deps=deps)
+                result = await agent.run(user_input, deps=deps)  # (3)
                 print(f"\nagent> {result.output}\n")
 
-                await memory.short_term.add_message(
+                # --- Short-term memory (module 2, lesson 2): store the agent's
+                #     answer here, once it has printed.
+                await memory.short_term.add_message(  # (4)
                     SESSION_ID, "assistant", str(result.output), user_identifier=USER_ID,
                 )
         finally:
             driver.close()
-
-        print("\nGoodbye. Everything you told me is saved - run me again and I will remember.")
+        print("\nGoodbye.")
 
 
 if __name__ == "__main__":
